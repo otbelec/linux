@@ -357,6 +357,15 @@ static int set_sync_ep_implicit_fb_quirk(struct snd_usb_substream *subs,
 
 		alts = &iface->altsetting[1];
 		goto add_sync_ep;
+	case USB_ID(0x07fd, 0x0005):
+		ep = 0x87;
+		iface = usb_ifnum_to_if(dev, 2);
+
+		if (!iface || iface->num_altsetting == 0)
+			return -EINVAL;
+
+		alts = &iface->altsetting[1];
+		goto add_sync_ep;
 
 	}
 	if (attr == USB_ENDPOINT_SYNC_ASYNC &&
@@ -481,6 +490,8 @@ static int set_sync_endpoint(struct snd_usb_substream *subs,
 
 	subs->data_endpoint->sync_master = subs->sync_endpoint;
 
+	pr_info("set sync endpoint %x", subs->sync_endpoint->ep_num);
+
 	return 0;
 }
 
@@ -498,7 +509,7 @@ static int set_format(struct snd_usb_substream *subs, struct audioformat *fmt)
 	iface = usb_ifnum_to_if(dev, fmt->iface);
 	if (WARN_ON(!iface))
 		return -EINVAL;
-	alts = &iface->altsetting[fmt->altset_idx];
+	alts = usb_altnum_to_altsetting(iface, fmt->altsetting);
 	altsd = get_iface_desc(alts);
 	if (WARN_ON(altsd->bAlternateSetting != fmt->altsetting))
 		return -EINVAL;
@@ -520,8 +531,7 @@ static int set_format(struct snd_usb_substream *subs, struct audioformat *fmt)
 	}
 
 	/* set interface */
-	if (subs->interface != fmt->iface ||
-	    subs->altset_idx != fmt->altset_idx) {
+	if (iface->cur_altsetting != alts) {
 
 		err = snd_usb_select_mode_quirk(subs, fmt);
 		if (err < 0)
@@ -536,11 +546,12 @@ static int set_format(struct snd_usb_substream *subs, struct audioformat *fmt)
 		}
 		dev_dbg(&dev->dev, "setting usb interface %d:%d\n",
 			fmt->iface, fmt->altsetting);
-		subs->interface = fmt->iface;
-		subs->altset_idx = fmt->altset_idx;
 
 		snd_usb_set_interface_quirk(dev);
 	}
+	
+	subs->interface = fmt->iface;
+	subs->altset_idx = fmt->altset_idx;
 
 	subs->data_endpoint = snd_usb_add_endpoint(subs->stream->chip,
 						   alts, fmt->endpoint, subs->direction,
@@ -626,6 +637,8 @@ static int configure_sync_endpoint(struct snd_usb_substream *subs)
 	int sync_period_bytes = subs->period_bytes;
 	struct snd_usb_substream *sync_subs =
 		&subs->stream->substream[subs->direction ^ 1];
+
+    pr_info("configure sync ep %x", subs->sync_endpoint->ep_num);
 
 	if (subs->sync_endpoint->type != SND_USB_ENDPOINT_TYPE_DATA ||
 	    !subs->stream)
@@ -816,6 +829,10 @@ static int snd_usb_pcm_prepare(struct snd_pcm_substream *substream)
 	if (ret < 0)
 		goto unlock;
 
+    //implicit feedback ep does not need to be setup?!??!
+	if (subs->data_endpoint->use_count > 0)
+		subs->need_setup_ep = false;
+	
 	if (subs->need_setup_ep) {
 
 		iface = usb_ifnum_to_if(subs->dev, subs->cur_audiofmt->iface);

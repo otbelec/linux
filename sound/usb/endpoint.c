@@ -872,6 +872,8 @@ int snd_usb_endpoint_set_params(struct snd_usb_endpoint *ep,
 {
 	int err;
 
+	pr_debug("set params ep %x, use count %d", ep->ep_num, ep->use_count);
+
 	if (ep->use_count != 0) {
 		usb_audio_warn(ep->chip,
 			 "Unable to change format on ep #%x: already in use\n",
@@ -939,7 +941,9 @@ int snd_usb_endpoint_start(struct snd_usb_endpoint *ep)
 		return -EBADFD;
 
 	/* already running? */
-	if (++ep->use_count != 1)
+	++ep->use_count;
+	pr_debug("start ep %x, use count %d", ep->ep_num, ep->use_count);
+	if (ep->use_count != 1)
 		return 0;
 
 	/* just to be sure */
@@ -996,6 +1000,7 @@ int snd_usb_endpoint_start(struct snd_usb_endpoint *ep)
 __error:
 	clear_bit(EP_FLAG_RUNNING, &ep->flags);
 	ep->use_count--;
+	pr_debug("error ep %x, use count %d", ep->ep_num, ep->use_count);
 	deactivate_urbs(ep, false);
 	return -EPIPE;
 }
@@ -1026,6 +1031,8 @@ void snd_usb_endpoint_stop(struct snd_usb_endpoint *ep)
 		deactivate_urbs(ep, false);
 		set_bit(EP_FLAG_STOPPING, &ep->flags);
 	}
+	
+	pr_debug("stop ep %x, use count %d", ep->ep_num, ep->use_count);
 }
 
 /**

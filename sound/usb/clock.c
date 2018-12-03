@@ -369,11 +369,15 @@ static int set_sample_rate_v2(struct snd_usb_audio *chip, int iface,
 
 	clock = snd_usb_clock_find_source(chip, fmt->clock, true);
 	if (clock < 0)
-		return clock;
+	{
+		clock = snd_usb_clock_find_source(chip, fmt->clock, false);
+		if (clock < 0)
+			return clock;
+	}
 
 	prev_rate = get_sample_rate_v2(chip, iface, fmt->altsetting, clock);
 	if (prev_rate == rate)
-		return 0;
+		goto validation;
 
 	cs_desc = snd_usb_find_clock_source(chip->ctrl_intf, clock);
 	writeable = uac2_control_is_writeable(cs_desc->bmControls, UAC2_CS_CONTROL_SAM_FREQ - 1);
@@ -416,6 +420,11 @@ static int set_sample_rate_v2(struct snd_usb_audio *chip, int iface,
 		usb_set_interface(dev, iface, fmt->altsetting);
 		snd_usb_set_interface_quirk(dev);
 	}
+
+validation:
+
+	if (!uac_clock_source_is_valid(chip, fmt->clock))
+		return -ENXIO;
 
 	return 0;
 }
